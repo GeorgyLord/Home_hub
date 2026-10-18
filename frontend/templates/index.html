@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Home Hub</title>
+    <style>
+        * {
+            margin: 0;
+            font-family: Verdana, Geneva, Tahoma, sans-serif;
+        }
+
+        header {
+            background-color: rgb(223, 223, 223);
+            height: 60px;
+            justify-content: center;
+            display: flex;
+        }
+
+        .name {
+            justify-content: center;
+            display: flex;
+            align-items: center;
+        }
+
+        main {
+            padding: 20px;
+        }
+
+        .info {
+            padding: 5px;
+            background-color: rgb(223, 223, 223);
+            display: flex;
+        }
+
+        .nowdata {
+            margin-right: 5px;
+        }
+
+        button {
+            margin: 5px 3px;
+            padding: 4px 8px;
+            cursor: pointer;
+        }
+
+        .task-card {
+            border: 2px solid #d3d3d3;
+            padding: 10px;
+            border-radius: 5px;
+        }
+
+        .text-empty {
+            color: #a0a0a0;
+        }
+
+        .section-tasks {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .section-add-task {
+            padding: 10px;
+            margin-top: 10px;
+            background-color: rgb(223, 223, 223);
+            border-radius: 5px;
+        }
+
+        /* Стили для элементов внутри режима редактирования */
+        .edit-input,
+        .edit-textarea {
+            display: block;
+            margin-top: 5px;
+            width: 100%;
+            max-width: 400px;
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <h2 class="name">
+            Home Hub
+        </h2>
+    </header>
+    <main>
+        <section class="section-tasks">
+            {% for task in tasks %}
+            <!-- Каждой карточке добавляем уникальный ID в HTML разметке -->
+            <div class="task-card" id="task-{{ task.id }}">
+                <h3>Тема: {{ task.subject }}</h3>
+
+                <!-- Оборачиваем данные в спаны со специфичными классами, чтобы JS мог их найти -->
+                <p>Дата: <span class="task-date-text">{{ task.data }}</span></p>
+                <p>Содержимое: <span class="task-content-text">{{ task.text }}</span></p>
+
+                <!-- Кнопка редактирования передает ID задачи в JS -->
+                <button class="edit-btn" onclick="toggleEdit('{{ task.id }}')">Редактировать</button>
+            </div>
+            {% endfor %}
+        </section>
+
+        <section class="section-add-task">
+            <label>Выберите дату:</label>
+            <input type="date" id="myDate" name="date" value="{{ nowdata }}">
+
+            <div>
+                <textarea id="myTextarea1" name="review" rows="2" cols="50"
+                    placeholder="Напишите здесь всё, что думаете..."></textarea>
+                <br>
+                <button onclick="sendDataToFastAPI()">Добавить</button>
+            </div>
+        </section>
+    </main>
+    <script>
+        // Функция отправки новой таски (Ваша исходная функция)
+        async function sendDataToFastAPI() {
+            const dateInput = document.getElementById('myDate');
+            const textarea = document.getElementById('myTextarea1');
+
+            const selectedDate = dateInput.value;
+            const mtext = textarea.value;
+            const dataPayload = {
+                date: selectedDate,
+                text: mtext
+            };
+
+            try {
+                const response = await fetch('/api/send-data', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(dataPayload)
+                });
+                await response.json();
+            } catch (error) {
+                console.error('Error', error)
+            }
+            location.reload();
+        }
+
+        // --- НОВЫЙ КОД ДЛЯ РЕДАКТИРОВАНИЯ ---
+
+        // Переключение карточки в режим редактирования и обратно
+        function toggleEdit(taskId) {
+            const card = document.getElementById(`task-${taskId}`);
+            const editBtn = card.querySelector('.edit-btn');
+
+            // Проверяем, находится ли карточка уже в режиме редактирования
+            if (card.classList.contains('is-editing')) {
+                // Если да, то кнопка сейчас называется "Сохранить", выполняем сохранение
+                saveTaskChanges(taskId);
+            } else {
+                // Если нет, превращаем текст в поля ввода
+                card.classList.add('is-editing');
+                editBtn.innerText = "Сохранить";
+
+                const dateSpan = card.querySelector('.task-date-text');
+                const textSpan = card.querySelector('.task-content-text');
+
+                const currentDateValue = dateSpan.innerText;
+                const currentTextValue = textSpan.innerText;
+
+                // Заменяем текст инпутами (для даты оставляем type="date")
+                dateSpan.innerHTML = `<input type="date" class="edit-input" value="${currentDateValue}">`;
+                textSpan.innerHTML = `<textarea class="edit-textarea" rows="2">${currentTextValue}</textarea>`;
+            }
+        }
+
+        // Отправка отредактированных данных на сервер FastAPI
+        async function saveTaskChanges(taskId) {
+            const card = document.getElementById(`task-${taskId}`);
+
+            // Находим созданные инпуты внутри карточки и забираем их новые значения
+            const newDate = card.querySelector('.edit-input').value;
+            const newText = card.querySelector('.edit-textarea').value;
+
+            const payload = {
+                id: taskId,
+                date: newDate,
+                text: newText
+            };
+
+            try {
+                const response = await fetch('/api/update-task', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (response.ok) {
+                    console.log("Задача успешно обновлена");
+                }
+            } catch (error) {
+                console.error('Ошибка обновления задачи:', error);
+            }
+
+            // Перезагружаем страницу, чтобы бэкенд отдал из БД обновленные данные
+            location.reload();
+        }
+    </script>
+</body>
+
+</html>
